@@ -28,7 +28,9 @@ well as some html containing the original tweet
 
 If you don't have sbt or Scala you can always just run the standalone fat jar as long as you have java8
 
+[/releases](releases/latest)
 twicsy-downloader.jar
+
 
 e.g.
 
