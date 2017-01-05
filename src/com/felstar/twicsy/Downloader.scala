@@ -1,7 +1,7 @@
 package com.felstar.twicsy
 
 import java.io.{File, InputStream}
-import java.net.URL
+import java.net.{SocketTimeoutException, URL}
 import java.nio.file.StandardCopyOption
 
 import org.jsoup.Jsoup
@@ -15,6 +15,8 @@ object Downloader extends App{
   val urlclean = "(?i)((https?|ftp|gopher|telnet|file|Unsure|http):((//)|(\\\\))+[\\w\\d:#@%/;$()~_?\\+-=\\\\\\.&]*)".r
 
   val POOLSIZE=4
+
+  val TIMEOUT=10*1000
 
   val taskSupport=new ForkJoinTaskSupport(new scala.concurrent.forkjoin.ForkJoinPool(POOLSIZE))
 
@@ -53,7 +55,7 @@ object Downloader extends App{
         true
       }
       catch{
-        case ex: Exception => println(s"$HOST/$page");println(url);println(ex.getMessage);
+        case ex: Exception => println(s"$HOST/$page");println(url);println(ex.getMessage)
           false
       }
       finally{
@@ -63,45 +65,50 @@ object Downloader extends App{
 
     println(page)
 
-    val doc = Jsoup.connect(s"$HOST/$page").get()
-
-    val info = doc.select("div[class=columns nine] div.detail_img_info")
-    val infohtml=info.html()
-    val timestamp=info.select("span a").text
-
-    val main_pic = doc.select("a[id=outbound.main_pic] img")
-
-    val alt=main_pic.attr("alt")
-    val filename=cleanFilename(timestamp+" "+alt)
-
-    val src=main_pic.attr("abs:src")
-
-    val html=
-      s"""<html>
-         |<body>
-         |<h2>
-         |$timestamp<br/>
-         |<br/>
-         |$infohtml
-         |</h2>
-         |<a href="$HOST/$page"><img src="$src"/></a>
-         |</body>
-         |</html>
-      """.stripMargin
-
     try {
-      val infofile = new File(directory, filename + ".html")
-      Files.write(infofile.toPath, List(html).asJava)
+      val doc = Jsoup.connect(s"$HOST/$page").timeout(TIMEOUT).get()
+
+      val info = doc.select("div[class=columns nine] div.detail_img_info")
+      val infohtml = info.html()
+      val timestamp = info.select("span a").text
+
+      val main_pic = doc.select("a[id=outbound.main_pic] img")
+
+      val alt = main_pic.attr("alt")
+      val filename = cleanFilename(timestamp + " " + alt)
+
+      val src = main_pic.attr("abs:src")
+
+      val html =
+        s"""<html>
+           |<body>
+           |<h2>
+           |$timestamp<br/>
+           |<br/>
+           |$infohtml
+           |</h2>
+           |<a href="$HOST/$page"><img src="$src"/></a>
+           |</body>
+           |</html>
+        """.stripMargin
+
+      try {
+        val infofile = new File(directory, filename + ".html")
+        Files.write(infofile.toPath, List(html).asJava)
+      }
+      catch {
+        case ex: Exception =>
+          println("*" * 40)
+          println(page + " " + filename)
+
+          throw ex
+      }
+      val imagefile = new File(directory, filename + ".jpg")
+      downloadImage(src, imagefile)
     }
     catch{
-      case ex:Exception=>
-        println("*"*40)
-        println(page+" "+filename)
-
-        throw ex
+      case ex: Exception=>ex.printStackTrace()
     }
-    val imagefile=new File(directory, filename+".jpg")
-    downloadImage(src, imagefile)
   }
 
   def downloadIndexPage(index:Int):Boolean={
@@ -110,18 +117,24 @@ object Downloader extends App{
 
     val skip=index*80
 
-    val doc = Jsoup.connect(s"$HOST/$searchpath/skip/$skip").get()
+    try {
+      val doc = Jsoup.connect(s"$HOST/$searchpath/skip/$skip").timeout(TIMEOUT).get()
 
-    val links = doc.select(s"[id=$picid]")
+      val links = doc.select(s"[id=$picid]")
 
-    if (links.isEmpty){
-      println("Empty page")
-      return false
+      if (links.isEmpty) {
+        println("Empty page")
+        return false
+      }
+
+      val linkspar = links.asScala.par
+      linkspar.tasksupport = taskSupport
+      linkspar.foreach(link => archivePage(link.attr("href")))
+    } catch {
+      case ex: SocketTimeoutException=> return true
+      case ex:Exception=>ex.printStackTrace()
+        return false
     }
-
-    val linkspar=links.asScala.par
-    linkspar.tasksupport = taskSupport
-    linkspar.foreach(link=>archivePage(link.attr("href")))
 
     true
   }

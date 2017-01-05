@@ -1,8 +1,8 @@
 name := "twicsy-downloader"
 
-version := "1.0"
+version := "1.01"
 
-lazy val `twicsy-downloader` = (project in file("."))
+lazy val `twicsy-downloader` = project in file(".")
 
 scalaVersion := "2.11.8"
 
