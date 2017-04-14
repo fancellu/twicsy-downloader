@@ -8,7 +8,7 @@ Twicsy is an archive of people's twitter pictures and tweets
 
 It even has pictures of disabled accounts
 
-##Usage
+## Usage
 
 Run with the search as first parameter. 
 Can either be a @username or a tag
